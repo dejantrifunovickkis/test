@@ -1,0 +1,18 @@
+public class FileScanWrapper {
+
+    File file;
+    boolean isInstalledApp;
+
+    public FileScanWrapper(File file, boolean isInstalledApp) {
+        this.file = file;
+        this.isInstalledApp = isInstalledApp;
+    }
+
+    public File getFile() {
+        return file;
+    }
+
+    public boolean isInstalledApp() {
+        return isInstalledApp;
+    }
+}
