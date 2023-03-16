@@ -1,0 +1,113 @@
+package activate.privacy.retrofit;
+
+
+import java.util.List;
+
+import activate.privacy.model.BreachModel;
+import activate.privacy.model.EmailCheckResponse;
+import activate.privacy.model.GetIpAndCountryCode;
+import activate.privacy.model.InstallationResponse;
+import activate.privacy.model.KeyDetailsResponse;
+import activate.privacy.model.VPNResponse;
+import activate.privacy.model.VerificationResponse;
+import activate.privacy.utilities.RegistrationResponseCodesMapper;
+import retrofit2.Call;
+import retrofit2.http.Body;
+import retrofit2.http.Field;
+import retrofit2.http.FormUrlEncoded;
+import retrofit2.http.GET;
+import retrofit2.http.POST;
+import retrofit2.http.Path;
+import retrofit2.http.Query;
+
+public interface Api {
+
+
+//        @POST("api1/Configuration/installstats")
+//        Call<InstallationResponse> registerInstallation(int label, String androidID, String isolang, int isInstall, String lang, String s, String machineid, String aNull, String rs, int mark);
+        //This method is used for "Code Registration"
+        @POST("api1/Key/activate")
+        Call<VerificationResponse> activate(@Body VerificationResponse response);
+
+      @GET("api1/Configuration/labelsettings/{labelid}/{language}/{mac}/{appver}")
+        Call<VerificationResponse> trialCheck(
+                @Path("labelid") String labelid,
+                @Path("language") String lang,
+                @Path("mac") String deviceid,
+                @Path("appver") String appVer);
+
+        //This method is used for "Code/Key Verification"
+        @GET("/api1/Key/isregistered/{labelid}/{key}/{mac}/{devicetype}")
+        Call<VerificationResponse> isRegistered(
+                @Path("labelid") String labelid,
+                @Path("key") String key,
+                @Path("mac") String deviceid,
+                @Path("devicetype") int devicetype);
+
+        @GET("api1/Key/isfristrun/{labelid}")
+        Call<VerificationResponse>isFirstRun(
+                @Path("labelid") String labelid,
+                @Query("mac") String deviceid
+        );
+        //This method is used for "Code/Key Verification"
+        //Response returns status code for the key verification, explained below
+
+        /**
+         * {@link RegistrationResponseCodesMapper}
+         * 0 -> Code ok;
+         * -1 -> Code doesn't exists
+         * -2 -> Disabled
+         * -3 -> Expired
+         * -4 -> no more uses (used >= maxuses)
+         * -5 -> Bad key format
+         * -6 -> Internal error
+         * -100 -> No response from server
+         */
+        @GET("/api1/Key/status/{labelid}/{key}/{mac}/{devicetype}")
+        Call<VerificationResponse> keyStatus(
+                @Path("labelid") String labelId,
+                @Path("key") String code,
+                @Path("mac") String deviceId,
+                @Path("devicetype") int devicetype);
+
+        //This method is used for getting details for key and mac
+
+        @GET("/api1/Key/details/{labelid}/{key}/{mac}/{devicetype}")
+        Call<KeyDetailsResponse> keyDetails(
+                @Path("labelid") int labelId,
+                @Path("key") String code,
+                @Path("devicetype") int devicetype,
+                @Path("mac")String deviceId);
+
+
+        //This method is used for Dark web email check
+        @FormUrlEncoded
+        @POST("api.php")
+        Call<EmailCheckResponse> checkEmail(@Field("emailsearch") String email, @Field("language") String locale);
+
+        //This method is used to get next page for Dark web email check
+        @FormUrlEncoded
+        @POST("api.php")
+        Call<EmailCheckResponse> getNextEmailBreaches(@Field("emailsearch") String email, @Field("language") String locale, @Field("nextid") String nextid);
+
+        //This method is used to get all breaches for Dark Web Scanner
+        @GET("v2/breaches")
+        Call<List<BreachModel>> getAllBreaches();
+
+        //This method is used for Dark web password check
+        @GET("range/{passwordHashFirstFive}")
+        Call<String> checkPassword(@Path("passwordHashFirstFive") String passwordHashFirstFive);
+
+        //This method is used for getting external IP
+        @GET("/api1/Helper/iptocountry")
+        Call<GetIpAndCountryCode> getIP();
+
+        //This method is used for getting username and password for VPN
+
+        @GET("/api1/VpnApi/create/{labelid}/{key}/{mac}")
+        Call<VPNResponse> vpnUserAndPassword(
+                @Path("labelid") String labelID,
+                @Path("key") String key,
+                @Path("mac") String androidID);
+
+}
