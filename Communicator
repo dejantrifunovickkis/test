@@ -1,0 +1,520 @@
+package activate.privacy.retrofit;
+
+import static activate.privacy.PSApplication.getContext;
+import static activate.privacy.PSApplication.setTrialExpiredAlarm;
+
+import android.content.Context;
+import android.content.Intent;
+import android.content.SharedPreferences;
+import android.util.Log;
+import android.widget.Toast;
+
+import java.text.SimpleDateFormat;
+import java.util.ArrayList;
+import java.util.Date;
+import java.util.List;
+import java.util.Locale;
+
+import activate.privacy.BackStack;
+import activate.privacy.BusProvider;
+import activate.privacy.Constants;
+import activate.privacy.MainActivity;
+import activate.privacy.PSApplication;
+import activate.privacy.R;
+import activate.privacy.model.ActiveOption;
+import activate.privacy.model.BreachModel;
+import activate.privacy.model.EmailCheckResponse;
+import activate.privacy.model.GetIpAndCountryCode;
+import activate.privacy.model.InstallationResponse;
+import activate.privacy.model.KeyDetailsResponse;
+import activate.privacy.model.VPNResponse;
+import activate.privacy.model.VerificationResponse;
+import activate.privacy.utilities.Utilities;
+import okhttp3.OkHttpClient;
+import okhttp3.logging.HttpLoggingInterceptor;
+import retrofit2.Call;
+import retrofit2.Callback;
+import retrofit2.Response;
+import retrofit2.Retrofit;
+import retrofit2.converter.gson.GsonConverterFactory;
+import retrofit2.converter.scalars.ScalarsConverterFactory;
+
+public class Communicator {
+
+    public static final String TAG = Communicator.class.getSimpleName();
+    private final Context context;
+    public static boolean appRegistered;
+
+    public Communicator(Context context) {
+        this.context = context;
+        BusProvider.bus.register(this);
+    }
+
+    public void registerInstallation(String phone_model, String android_version, String booster_version, int label, String isolang, String lang, String imei, int isInstall, final InstallRegistrationCallback callback) {
+
+//        HttpLoggingInterceptor interceptor = new HttpLoggingInterceptor();
+//        interceptor.setLevel(HttpLoggingInterceptor.Level.BODY);
+//        OkHttpClient client = new OkHttpClient.Builder().addInterceptor(interceptor).build();
+//
+//        Retrofit retrofit = new Retrofit.Builder()
+//                .baseUrl(Constants.BACKEND.BASE_URL)
+//                .client(client)
+//                .addConverterFactory(GsonConverterFactory.create())
+//                .build();
+//        Api api = retrofit.create(Api.class);
+//
+//        int mark = 0;
+//        String machineid = phone_model + ":" + android_version;
+//        Call<InstallationResponse> call = api.registerInstallation(label,PSApplication.getAndroidID(),isolang,isInstall,lang,"1.0.0.",machineid,"null","RS",mark);
+//        call.enqueue(new Callback<InstallationResponse>() {
+//
+//            @Override
+//            public void onResponse(Call<InstallationResponse> call, Response<InstallationResponse> response) {
+//                Log.e(TAG, "onResponse: " + response.message());
+//                SharedPreferences prefs = context.getSharedPreferences(Constants.APP_STATE.STATE_SHARED_PREFERENCES, Context.MODE_PRIVATE);
+//                SharedPreferences.Editor editor = prefs.edit();
+//                editor.putBoolean(Constants.APP_STATE.IS_APP_REGISTERED, true);
+//                editor.apply();
+//                callback.onSuccess();
+//            }
+//
+//            @Override
+//            public void onFailure(Call<InstallationResponse> call, Throwable t) {
+//                Log.e(TAG, "onFailure: ");
+//                t.printStackTrace();
+//                SharedPreferences prefs = context.getSharedPreferences(Constants.APP_STATE.STATE_SHARED_PREFERENCES, Context.MODE_PRIVATE);
+//                SharedPreferences.Editor editor = prefs.edit();
+//                editor.putBoolean(Constants.APP_STATE.IS_APP_REGISTERED, false);
+//                editor.commit();
+//                callback.onFailure();
+//            }
+//        });
+
+    }
+
+    public void registerCode(final String code, final String deviceId) {
+        HttpLoggingInterceptor interceptor = new HttpLoggingInterceptor();
+        interceptor.setLevel(HttpLoggingInterceptor.Level.BODY);
+        OkHttpClient client = new OkHttpClient.Builder().addInterceptor(interceptor).build();
+
+        Retrofit retrofit = new Retrofit.Builder()
+                .baseUrl(Constants.BACKEND.BASE_URL)
+                .client(client)
+                .addConverterFactory(GsonConverterFactory.create())
+                .build();
+        final Api api = retrofit.create(Api.class);
+
+        VerificationResponse response = new VerificationResponse(Constants.DEFAULTS.LABEL_ID, code, deviceId, 3);
+        Call<VerificationResponse> call = api.activate(response);
+        call.enqueue(new Callback<VerificationResponse>() {
+
+            @Override
+            public void onResponse(Call<VerificationResponse> call, final Response<VerificationResponse> response) {
+
+                if (response != null && response.body().isSuccess()) {
+                    appRegistered = true;
+                    final SharedPreferences prefs = getContext().getSharedPreferences(Constants.APP_STATE.STATE_SHARED_PREFERENCES, Context.MODE_PRIVATE);
+                    final SharedPreferences.Editor editor = prefs.edit();
+                    editor.putInt(Constants.APP_STATE.CURRENT_ACTIVE_OPTION, ActiveOption.ACTIVATION_OPTION_CODE);
+                    editor.putString(Constants.APP_STATE.ACTIVE_CODE, code);
+                    editor.apply();
+                    Toast.makeText(context, R.string.code_activated, Toast.LENGTH_SHORT).show();
+                    ((MainActivity) context).refreshNavigationAdapter();
+//                    ((MainActivity) context).getmAdView().setVisibility(View.GONE);
+                    if (Constants.ADS.SHOULD_SHOW_ADS) {
+                        Constants.ADS.ADS_ENABLED = false;
+                    }
+                    String date = new SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(new Date());
+                    Log.i(TAG, "New date for adding to about dialog: " + date);
+                    ActiveOption activeOption = new ActiveOption();
+                    activeOption.setOption(ActiveOption.ACTIVATION_OPTION_CODE);
+                    activeOption.setActivationDate(date);
+                    PSApplication.saveActivationOption(activeOption);
+
+                    setTrialExpiredAlarm(false);
+                    PSApplication.saveKey(code);
+                    getKeyDetails(code, deviceId);
+
+                    if (BackStack.getInstance().getActivationCodeActivity() != null) {
+                        BackStack.getInstance().getActivationCodeActivity().finish();
+                        if (BackStack.getInstance().getActivationCodeActivity() != null) {
+                            Log.i(TAG, "Not null");
+                            //BackStack.getInstance().getActivity().finish();
+                            BackStack.getInstance().clearStackDownToHome();
+                            Intent intent = new Intent(getContext(), MainActivity.class);
+                            BackStack.getInstance().getActivity().startActivity(intent);
+                        }
+                    }
+
+
+                } else {
+                    appRegistered = false;
+                    Toast.makeText(getContext(), R.string.unable_to_register_code, Toast.LENGTH_SHORT).show();
+                }
+            }
+
+            @Override
+            public void onFailure(Call<VerificationResponse> call, Throwable t) {
+                appRegistered = false;
+                Toast.makeText(context, R.string.unable_to_register_code, Toast.LENGTH_SHORT).show();
+            }
+        });
+    }
+
+    public void verifyCode(String key, String deviceId, final VerificationCallback callback) {
+        Log.i(TAG, "verifyIsRegistered");
+        HttpLoggingInterceptor interceptor = new HttpLoggingInterceptor();
+        interceptor.setLevel(HttpLoggingInterceptor.Level.BODY);
+        OkHttpClient client = new OkHttpClient.Builder().addInterceptor(interceptor).build();
+
+        Retrofit retrofit = new Retrofit.Builder()
+                .baseUrl(Constants.BACKEND.BASE_URL)
+                .client(client)
+                .addConverterFactory(GsonConverterFactory.create())
+                .build();
+        Api api = retrofit.create(Api.class);
+
+        // getKeyDetails(key, deviceId);
+
+        Call<VerificationResponse> call = api.isRegistered(Constants.DEFAULTS.LABEL_ID, key, deviceId, 3);
+        call.enqueue(new Callback<VerificationResponse>() {
+
+            @Override
+            public void onResponse(Call<VerificationResponse> call, Response<VerificationResponse> response) {
+                if (response != null & response.body() != null) {
+                    callback.returnResponse(response.body());
+                }
+                callback.returnResponse(response.body());
+            }
+
+            @Override
+            public void onFailure(Call<VerificationResponse> call, Throwable t) {
+                callback.returnError(t);
+            }
+        });
+    }
+
+
+    public void getKeyDetails(final String key, final String deviceId) {
+        HttpLoggingInterceptor interceptor = new HttpLoggingInterceptor();
+        interceptor.setLevel(HttpLoggingInterceptor.Level.BODY);
+        OkHttpClient client = new OkHttpClient.Builder().addInterceptor(interceptor).build();
+
+        Retrofit retrofit = new Retrofit.Builder()
+                .baseUrl(Constants.BACKEND.BASE_URL)
+                .client(client)
+                .addConverterFactory(GsonConverterFactory.create())
+                .build();
+        Api api = retrofit.create(Api.class);
+
+        Call<KeyDetailsResponse> call = api.keyDetails(Integer.parseInt(Constants.DEFAULTS.LABEL_ID), key, 3, deviceId);
+        call.enqueue(new Callback<KeyDetailsResponse>() {
+            @Override
+            public void onResponse(Call<KeyDetailsResponse> call, Response<KeyDetailsResponse> response) {
+                if (response != null) {
+                    SimpleDateFormat sdf = new SimpleDateFormat("yyyy-MM-dd", Locale.US);
+                    Date date = new Date(response.body().getActivatedAt() * 1000);
+                    String time = sdf.format(date);
+
+                    ActiveOption activeOption = new ActiveOption();
+                    activeOption.setOption(ActiveOption.ACTIVATION_OPTION_CODE);
+                    activeOption.setActivationDate(time);
+                    activeOption.setNumLicenses(response.body().getNumberOfLicenses());
+                    if (response.body().getDuration() != null) {
+                        if (response.body().getDuration().equalsIgnoreCase("LIFETIME")) {
+                            activeOption.setDaysLeft(Integer.MAX_VALUE);
+                        } else {
+                            activeOption.setDaysLeft(Integer.parseInt(response.body().getDuration()));
+                        }
+                    }
+                    PSApplication.saveActivationOption(activeOption);
+                } else {
+                    Log.e(TAG, "onResponse: error getting key details");
+                }
+            }
+
+            @Override
+            public void onFailure(Call<KeyDetailsResponse> call, Throwable t) {
+                t.printStackTrace();
+            }
+        });
+    }
+
+    public void validateApp(int isActive) {
+
+        SharedPreferences prefs = context.getSharedPreferences(Constants.APP_STATE.STATE_SHARED_PREFERENCES, Context.MODE_PRIVATE);
+        SharedPreferences.Editor editor = prefs.edit();
+        if (appRegistered) {
+            editor.putBoolean(Constants.APP_STATE.IS_APP_VALID, true);
+        } else {
+            editor.putBoolean(Constants.APP_STATE.IS_APP_VALID, false);
+        }
+
+        editor.apply();
+    }
+
+    public void scanEmail(String email, final ScanEmailCallback callback) {
+        HttpLoggingInterceptor interceptor = new HttpLoggingInterceptor();
+        interceptor.setLevel(HttpLoggingInterceptor.Level.BODY);
+        OkHttpClient client = new OkHttpClient.Builder().addInterceptor(interceptor).build();
+
+        Retrofit retrofit = new Retrofit.Builder()
+                .baseUrl(Constants.DARK_WEB_API.EMAIL_SCAN_URL)
+                .client(client)
+                .addConverterFactory(GsonConverterFactory.create())
+                .build();
+        Api api = retrofit.create(Api.class);
+
+        SharedPreferences preferences = context.getSharedPreferences(Constants.APP_STATE.STATE_SHARED_PREFERENCES, Context.MODE_PRIVATE);
+        String savedLocale = preferences.getString(Constants.APP_STATE.SAVED_LOCALE, Constants.DEFAULTS.DEFAULT_LOCALE);
+
+        Call<EmailCheckResponse> call = api.checkEmail(email, savedLocale);
+        call.enqueue(new Callback<EmailCheckResponse>() {
+            @Override
+            public void onResponse(Call<EmailCheckResponse> call, Response<EmailCheckResponse> response) {
+                if (response != null && response.body() != null) {
+                    EmailCheckResponse.Data data = response.body().getData();
+                    int responseTotal = data.query.pagination.total;
+                    int totalToLoad;
+                    boolean hasMoreThanLimit;
+                    if (responseTotal > Constants.DARK_WEB_API.BREACHES_LIMIT) {
+                        hasMoreThanLimit = true;
+                        totalToLoad = Constants.DARK_WEB_API.BREACHES_LIMIT;
+                    } else {
+                        hasMoreThanLimit = false;
+                        totalToLoad = responseTotal;
+                    }
+                    List<EmailCheckResponse.Breach> breaches = new ArrayList<>(data.results);
+                    if (breaches.size() < totalToLoad) {
+                        getNextBreaches(email, savedLocale, data.nextID, breaches, totalToLoad, callback, hasMoreThanLimit);
+                    } else {
+                        callback.onSuccess(data.results, hasMoreThanLimit);
+                    }
+                } else {
+                    callback.onSuccess(new ArrayList<EmailCheckResponse.Breach>(), false);
+                }
+            }
+
+            @Override
+            public void onFailure(Call<EmailCheckResponse> call, Throwable t) {
+                callback.onSuccess(new ArrayList<EmailCheckResponse.Breach>(), false);
+            }
+        });
+    }
+
+    public void getNextBreaches(String email, String savedLocale, String nextID, List<EmailCheckResponse.Breach> breaches, int total, final ScanEmailCallback callback, boolean hasMoreThanLimit) {
+        HttpLoggingInterceptor interceptor = new HttpLoggingInterceptor();
+        interceptor.setLevel(HttpLoggingInterceptor.Level.BODY);
+        OkHttpClient client = new OkHttpClient.Builder().addInterceptor(interceptor).build();
+
+        Retrofit retrofit = new Retrofit.Builder()
+                .baseUrl(Constants.DARK_WEB_API.EMAIL_SCAN_URL)
+                .client(client)
+                .addConverterFactory(GsonConverterFactory.create())
+                .build();
+        Api api = retrofit.create(Api.class);
+
+        Call<EmailCheckResponse> call = api.getNextEmailBreaches(email, savedLocale, nextID);
+        call.enqueue(new Callback<EmailCheckResponse>() {
+            @Override
+            public void onResponse(Call<EmailCheckResponse> call, Response<EmailCheckResponse> response) {
+                if (response != null && response.body() != null) {
+                    breaches.addAll(response.body().getData().results);
+                    if (breaches.size() < total) {
+                        getNextBreaches(email, savedLocale, nextID, breaches, total, callback, hasMoreThanLimit);
+                    } else {
+                        callback.onSuccess(breaches, hasMoreThanLimit);
+                    }
+                } else {
+                    callback.onSuccess(breaches, hasMoreThanLimit);
+                }
+            }
+
+            @Override
+            public void onFailure(Call<EmailCheckResponse> call, Throwable t) {
+                callback.onSuccess(breaches, hasMoreThanLimit);
+            }
+        });
+    }
+
+    public void getAllBreaches(final GetAllBreachesCallback callback) {
+        HttpLoggingInterceptor interceptor = new HttpLoggingInterceptor();
+        interceptor.setLevel(HttpLoggingInterceptor.Level.BODY);
+        OkHttpClient client = new OkHttpClient.Builder().addInterceptor(interceptor).build();
+
+        Retrofit retrofit = new Retrofit.Builder()
+                .baseUrl(Constants.DARK_WEB_API.EMAIL_BREACHES_URL)
+                .client(client)
+                .addConverterFactory(GsonConverterFactory.create())
+                .build();
+        Api api = retrofit.create(Api.class);
+
+
+        Call<List<BreachModel>> call = api.getAllBreaches();
+        call.enqueue(new Callback<List<BreachModel>>() {
+            @Override
+            public void onResponse(Call<List<BreachModel>> call, Response<List<BreachModel>> response) {
+                List<BreachModel> breachModels = response.body();
+                callback.onSuccess(breachModels);
+            }
+
+            @Override
+            public void onFailure(Call<List<BreachModel>> call, Throwable t) {
+
+            }
+        });
+    }
+
+    public void scanPassword(String password, final ScanPasswordCallback callback) {
+        String passwordHash = Utilities.getSha1Hex(password);
+        String hashQueryPart = passwordHash.substring(0, 5);
+        final String hashLeftover = passwordHash.substring(5, passwordHash.length());
+
+        HttpLoggingInterceptor interceptor = new HttpLoggingInterceptor();
+        interceptor.setLevel(HttpLoggingInterceptor.Level.BODY);
+        OkHttpClient client = new OkHttpClient.Builder().addInterceptor(interceptor).build();
+
+        Retrofit retrofit = new Retrofit.Builder()
+                .baseUrl(Constants.DARK_WEB_API.PASSWORD_SCAN_URL)
+                .client(client)
+                .addConverterFactory(ScalarsConverterFactory.create())
+                .build();
+        Api api = retrofit.create(Api.class);
+
+        Call<String> call = api.checkPassword(hashQueryPart);
+        call.enqueue(new Callback<String>() {
+            @Override
+            public void onResponse(Call<String> call, Response<String> response) {
+                String[] hashLeftoverList = response.body().split("\\s+");
+                long usedCount = 0;
+                for (String s : hashLeftoverList) {
+                    String[] lineParts = s.split(":");
+                    if (lineParts[0].equalsIgnoreCase(hashLeftover)) {
+                        usedCount = Long.parseLong(lineParts[1]);
+                    }
+                }
+                callback.onSuccess(usedCount);
+            }
+
+            @Override
+            public void onFailure(Call<String> call, Throwable t) {
+
+            }
+        });
+    }
+
+    public void getIP(final GetIPCallback callback) {
+        HttpLoggingInterceptor interceptor = new HttpLoggingInterceptor();
+        interceptor.setLevel(HttpLoggingInterceptor.Level.BODY);
+        OkHttpClient client = new OkHttpClient.Builder().addInterceptor(interceptor).build();
+
+
+        Retrofit retrofit = new Retrofit.Builder()
+                .baseUrl(Constants.BACKEND.VPN_BASE_URL)
+                .client(client)
+                .addConverterFactory(GsonConverterFactory.create())
+                .build();
+        Api api = retrofit.create(Api.class);
+
+
+        Call<GetIpAndCountryCode> call = api.getIP();
+        call.enqueue(new Callback<GetIpAndCountryCode>() {
+            @Override
+            public void onResponse(Call<GetIpAndCountryCode> call, Response<GetIpAndCountryCode> response) {
+                Log.i(TAG, "IP response: " + response.body().getIp());
+                String ip = response.body().getIp();
+                callback.onIPGot(ip);
+            }
+
+            @Override
+            public void onFailure(Call<GetIpAndCountryCode> call, Throwable t) {
+
+            }
+        });
+    }
+
+    public void getVPNUsernameAndPassword(String labelID, String androidID, String key, final VPNCallback callback) {
+        HttpLoggingInterceptor interceptor = new HttpLoggingInterceptor();
+        interceptor.setLevel(HttpLoggingInterceptor.Level.BODY);
+        OkHttpClient client = new OkHttpClient.Builder().addInterceptor(interceptor).build();
+
+
+        Retrofit retrofit = new Retrofit.Builder()
+                .baseUrl(Constants.BACKEND.VPN_BASE_URL)
+                .client(client)
+                .addConverterFactory(GsonConverterFactory.create())
+                .build();
+        Api api = retrofit.create(Api.class);
+
+        Call<VPNResponse> call = api.vpnUserAndPassword(labelID, key, androidID);
+        call.enqueue(new Callback<VPNResponse>() {
+            @Override
+            public void onResponse(Call<VPNResponse> call, Response<VPNResponse> response) {
+                if (response != null && response.body() != null) {
+                    String username = response.body().getUsername();
+                    String password = response.body().getPassword();
+                    int result = response.body().getResult();
+                    callback.onVPNInfoReceived(username, password, result);
+                }
+            }
+
+            @Override
+            public void onFailure(Call<VPNResponse> call, Throwable t) {
+                callback.onVPNInfoFailed();
+            }
+        });
+    }
+
+    public interface VerificationCallback {
+        void returnResponse(VerificationResponse response);
+
+        void returnError(Throwable t);
+    }
+
+    public interface KeyVerificationCallback {
+        void onKeyVerificationSuccess();
+
+        void onKeyVerificationFailure(int errorCode);
+    }
+
+    public interface GetKeyDetailsCallback {
+        void onDetailsGot(KeyDetailsResponse response);
+
+        void onFailure();
+    }
+
+    public interface InstallRegistrationCallback {
+        void onSuccess();
+
+        void onFailure();
+    }
+
+    public interface ScanEmailCallback {
+        void onSuccess(List<EmailCheckResponse.Breach> breachModels, boolean hasMoreThanLimit);
+
+        void onFailure();
+    }
+
+
+    public interface GetAllBreachesCallback {
+        void onSuccess(List<BreachModel> breachModels);
+
+        void onFailure();
+    }
+
+    public interface ScanPasswordCallback {
+        void onSuccess(long timesPasswordUsed);
+
+        void onFailure();
+    }
+
+    public interface GetIPCallback {
+        void onIPGot(String ip);
+    }
+
+    public interface VPNCallback {
+        void onVPNInfoReceived(String username, String password, int result);
+
+        void onVPNInfoFailed();
+    }
+}
