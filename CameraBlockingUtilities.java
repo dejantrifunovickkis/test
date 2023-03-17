@@ -75,8 +75,7 @@ public class CameraBlockingUtilities extends DeviceAdminReceiver {
     private CaptureRequest.Builder mPreviewRequestBuilder;
     private CaptureRequest mPreviewRequest;
     private Semaphore mCameraOpenCloseLock = new Semaphore(1);
-    private Handler mHandler = new Handler();
-    private static final long CAMERA_STATUS_CHECK_INTERVAL_MS = 10000; // 10 seconds
+
     private volatile boolean opened;
     private volatile boolean loopStarted;
 
@@ -272,21 +271,6 @@ public class CameraBlockingUtilities extends DeviceAdminReceiver {
         stopBackgroundThread();
     }
 
-    private Runnable checkCameraStatusRunnable = new Runnable() {
-        @Override
-        public void run() {
-            SharedPreferences preferences = PSApplication.getContext().getSharedPreferences(Constants.APP_STATE.STATE_SHARED_PREFERENCES, Context.MODE_PRIVATE);
-            boolean cameraBlockerEnabled = preferences.getBoolean(Constants.APP_STATE.CAM_BLOCK_ENABLED, false);
-            if (cameraBlockerEnabled) {
-                String currentPackage = BlockingUtilities.getRunningPackage(PSApplication.getContext());
-                if (currentPackage != null && !currentPackage.equalsIgnoreCase(PSApplication.getContext().getPackageName())) {
-                    closeCamera();
-                }
-            }
-            mHandler.postDelayed(checkCameraStatusRunnable, CAMERA_STATUS_CHECK_INTERVAL_MS);
-        }
-    };
-
     private void openCamera(int width, int height) {
         setUpCameraOutputs(width, height);
         configureTransform(width, height);
@@ -462,7 +446,6 @@ public class CameraBlockingUtilities extends DeviceAdminReceiver {
         mBackgroundThread = new HandlerThread("CameraBackground");
         mBackgroundThread.start();
         mBackgroundHandler = new Handler(mBackgroundThread.getLooper());
-        mHandler.post(checkCameraStatusRunnable);
     }
 
     private void stopBackgroundThread() {
@@ -474,7 +457,6 @@ public class CameraBlockingUtilities extends DeviceAdminReceiver {
             mBackgroundThread.join();
             mBackgroundThread = null;
             mBackgroundHandler = null;
-            mHandler.removeCallbacks(checkCameraStatusRunnable);
         } catch (InterruptedException e) {
             e.printStackTrace();
         }
